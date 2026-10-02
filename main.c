@@ -1,39 +1,22 @@
-/*
- * main.c -- the bare scull char module
- *
- * Copyright (C) 2001 Alessandro Rubini and Jonathan Corbet
- * Copyright (C) 2001 O'Reilly & Associates
- * Copyright (C) 2011 Vigith Maurice
- *
- * The source code in this file can be freely used, adapted,
- * and redistributed in source or binary form, so long as an
- * acknowledgment appears in derived source files.  The citation
- * should list that the code comes from the book "Linux Device
- * Drivers" by Alessandro Rubini and Jonathan Corbet, published
- * by O'Reilly & Associates.   No warranty is attached;
- * we cannot take responsibility for errors or fitness for use.
- *
- */
 
 
-#include <linux/module.h>
-#include <linux/moduleparam.h>
-#include <linux/init.h>
 
-#include <linux/kernel.h>	/* printk() */
-#include <linux/slab.h>		/* kmalloc() */
-#include <linux/fs.h>		/* everything... */
-#include <linux/errno.h>	/* error codes */
-#include <linux/types.h>	/* size_t */
-
-#include <linux/fcntl.h>	/* O_ACCMODE */
-#include <linux/seq_file.h>
-#include <linux/cdev.h>
-
-#include <asm/system.h>		/* cli(), *_flags */
-#include <asm/uaccess.h>	/* copy_*_user */
-
-#include "scull.h"		/* local definitions */
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+ #include <linux/init.h>
+ 
+ #include <linux/kernel.h>
+ #include <linux/slab.h>
+ #include <linux/fs.h>
+ #include <linux/errno.h>
+ #include <linux/types.h>
+ 
+ #include <linux/fcntl.h>
+ #include <linux/seq_file.h>
+ #include <linux/cdev.h>
+ #include <linux/uaccess.h>
+ 
+ #include "scull.h"	/* local definitions */
 
 /*
  * Our parameters which can be set at load time.
@@ -51,8 +34,8 @@ module_param(scull_nr_devs, int, S_IRUGO);
 module_param(scull_quantum, int, S_IRUGO);
 module_param(scull_qset, int, S_IRUGO);
 
-MODULE_AUTHOR("Alessandro Rubini, Jonathan Corbet, Vigith Maurice");
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_AUTHOR("Fakhretdinov Ravil");
+MODULE_LICENSE("GPL");
 
 struct scull_dev *scull_devices;	/* allocated in scull_init_module */
 
@@ -321,7 +304,6 @@ static void scull_setup_cdev(struct scull_dev *dev, int index)
     
 	cdev_init(&dev->cdev, &scull_fops);
 	dev->cdev.owner = THIS_MODULE;
-	dev->cdev.ops = &scull_fops; /* not sure what is this doing here!!, this is OLD STYLE */
 	err = cdev_add (&dev->cdev, devno, 1);
 	/* Fail gracefully if need be */
 	if (err)
@@ -366,7 +348,7 @@ int scull_init_module(void)
 	for (i = 0; i < scull_nr_devs; i++) {
 		scull_devices[i].quantum = scull_quantum;
 		scull_devices[i].qset = scull_qset;
-		init_MUTEX(&scull_devices[i].sem);
+		sema_init(&scull_devices[i].sem, 1);
 		scull_setup_cdev(&scull_devices[i], i);
 	}
 
