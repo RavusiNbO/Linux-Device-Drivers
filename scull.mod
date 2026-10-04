@@ -1,1 +1,1 @@
-/home/rava/dev/drivers/1/scull/main.o
+/home/rava/dev/drivers/1/main.o

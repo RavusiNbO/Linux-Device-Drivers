@@ -1,0 +1,1 @@
+savedcmd_/home/rava/dev/drivers/1/scull.ko := aarch64-linux-gnu-ld -r -EL  -maarch64elf -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T arch/arm64/module.lds -o /home/rava/dev/drivers/1/scull.ko /home/rava/dev/drivers/1/scull.o /home/rava/dev/drivers/1/scull.mod.o /home/rava/dev/drivers/1/.module-common.o

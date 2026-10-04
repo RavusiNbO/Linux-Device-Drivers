@@ -24,7 +24,7 @@
 #endif
 
 #ifndef SCULL_NR_DEVS
-#define SCULL_NR_DEVS 4    /* scull0 through scull3 */
+#define SCULL_NR_DEVS 2    /* scull0 through scull3 */
 #endif
 
 
@@ -37,31 +37,32 @@
  *
  * The array (quantum-set) is SCULL_QSET long.
  */
-#ifndef SCULL_QUANTUM
-#define SCULL_QUANTUM 4000
-#endif
-
-#ifndef SCULL_QSET
-#define SCULL_QSET    1000
+#ifndef CAPACITY
+#define CAPACITY    1000
 #endif
 
 
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/semaphore.h>
+#include <linux/wait.h>
+#include <linux/spinlock.h>   
+#include <linux/ioctl.h>      
+#include <linux/slab.h>
 
 /*
  * Representation of scull quantum sets.
  */
-struct scull_qset {
-	void **data;
-	struct scull_qset *next;
-};
-
-struct scull_dev {
-	struct scull_qset *data;  /* Pointer to first quantum set */
-	int quantum;              /* the current quantum size */
-	int qset;                 /* the current array size */
-	unsigned long size;       /* amount of data stored here */
-	unsigned int access_key;  /* used by sculluid and scullpriv */
-	struct semaphore sem;     /* mutual exclusion semaphore     */
+struct rbuf {
+	char data[CAPACITY];  /* Pointer to first quantum set */         /* the current array size */
+	unsigned long size;
+	unsigned long rp;
+	unsigned long wp;     /* amount of data stored here */
+	spinlock_t lock;    
+	wait_queue_head_t rqueue;
+	wait_queue_head_t wqueue;
 	struct cdev cdev;	  /* Char device structure		*/
 };
 
@@ -77,18 +78,14 @@ struct scull_dev {
  */
 extern int scull_major;     /* main.c */
 extern int scull_nr_devs;
-extern int scull_quantum;
-extern int scull_qset;
 
 
 /*
  * Prototypes for shared functions
  */
 
-int     scull_trim(struct scull_dev *dev);
 ssize_t scull_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);                   
-ssize_t scull_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos);                    
-loff_t  scull_llseek(struct file *filp, loff_t off, int whence);
+ssize_t scull_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos);   
 
 
 #endif /* _SCULL_H_ */
