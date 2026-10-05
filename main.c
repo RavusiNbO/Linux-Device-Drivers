@@ -64,7 +64,7 @@ ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
 {
 	if (!count) return 0;
 	struct rbuf *dev = filp->private_data;
-	int retvalue = 0;
+	ssize_t retvalue = 0;
 	char *kbuf = kmalloc(count, GFP_KERNEL);
 	if (!kbuf){
 		retvalue = -ENOMEM;
@@ -98,19 +98,22 @@ ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
 		if (readed < count) 
 		{
 			to_read = dev->wp - dev->rp < count - readed ? dev->wp - dev->rp : count - readed;
-			memcpy(kbuf + readed, dev->data, to_read);
+			memcpy(kbuf + readed, dev->data + dev->rp, to_read);
 			readed += to_read;
 			dev->size -= to_read;
-			dev->rp += to_read;
+			dev->rp = (dev->rp + to_read) % CAPACITY;
 		}
 		spin_unlock(&dev->lock);
 		if (end) {
 			retvalue = -ENODEV;
 			goto read_out;
 		}
-		if (dev->size == 1) wake_up_interruptible(&dev->wqueue);
+		wake_up_interruptible(&dev->wqueue);
 	}
-	if (copy_to_user(buf, kbuf, count)) retvalue = -EFAULT;
+	if (copy_to_user(buf, kbuf, count))
+		retvalue = -EFAULT;
+	else
+		retvalue = readed;
 
 read_out:
 	if (kbuf) kfree(kbuf);
@@ -122,7 +125,7 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
 {
 	if (!count) return 0;
 	struct rbuf *dev = filp->private_data;
-	int retvalue = 0;
+	ssize_t retvalue = 0;
 	char *kbuf = kmalloc(count, GFP_KERNEL);
 	if (!kbuf) {
 		retvalue = -ENOMEM; 
@@ -153,21 +156,24 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
 			memcpy(dev->data + dev->wp, kbuf + writed, to_write);
 			writed += to_write;
 			dev->wp = (dev->wp + to_write) % CAPACITY;
+			dev->size += to_write;
 		}
 		if (writed < count) 
 		{
 			to_write = dev->rp - dev->wp < count - writed ? dev->rp - dev->wp : count - writed;
-			memcpy(kbuf + writed, dev->data, to_write);
+			memcpy(dev->data + dev->wp, kbuf + writed, to_write);
 			writed += to_write;
-			dev->wp += to_write;
+			dev->wp = (dev->wp + to_write) % CAPACITY;
+			dev->size += to_write;
 		}
 		spin_unlock(&dev->lock);
 		if (end){
 			retvalue = -ENODEV;
 			goto write_out;
 		}
-		if (dev->size == CAPACITY - 1) wake_up_interruptible(&dev->rqueue);
+		wake_up_interruptible(&dev->rqueue);
 	}
+	retvalue = writed;
 
 write_out:
 	if (kbuf) kfree(kbuf);
@@ -210,7 +216,6 @@ void scull_cleanup_module(void)
 		for (i = 0; i < scull_nr_devs; i++) {
 			wake_up_all(&scull_devices[i].rqueue);
 			wake_up_all(&scull_devices[i].wqueue);
-			kfree(scull_devices[i].data);
 			cdev_del(&scull_devices[i].cdev);
 		}
 		kfree(scull_devices);
@@ -277,8 +282,8 @@ int scull_init_module(void)
 		scull_devices[i].rp = 0;
 		scull_devices[i].size = 0;
 		spin_lock_init(&scull_devices[i].lock);
-		init_waitqueue_head(&scull_devices->rqueue);
-		init_waitqueue_head(&scull_devices->wqueue);
+		init_waitqueue_head(&scull_devices[i].rqueue);
+		init_waitqueue_head(&scull_devices[i].wqueue);
 		scull_setup_cdev(&scull_devices[i], i);
 	}
 
@@ -291,4 +296,3 @@ int scull_init_module(void)
 
 module_init(scull_init_module);
 module_exit(scull_cleanup_module);
-
