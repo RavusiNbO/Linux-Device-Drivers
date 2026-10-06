@@ -25,7 +25,6 @@
 int scull_major =   SCULL_MAJOR;
 int scull_minor =   0;
 int scull_nr_devs = SCULL_NR_DEVS;
-static char end = 0;
 
 MODULE_AUTHOR("Fakhretdinov Ravil");
 MODULE_LICENSE("GPL");
@@ -72,44 +71,33 @@ ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
 	} 
 	unsigned readed = 0, to_read = 0;
 	
-
-
-	while (readed != count)
-	{
-	wait_read:
-		wait_event_interruptible(dev->rqueue, dev->size != 0 || end);
-		if (end){
-			retvalue = -ENODEV;
-			goto read_out;
-		}
-		spin_lock(&dev->lock);
-		if (dev->size == 0) {
-			spin_unlock(&dev->lock); 
-			goto wait_read;
-		}
-		if (dev->wp <= dev->rp)
-		{
-			to_read = CAPACITY - dev->rp < count - readed ? CAPACITY - dev->rp : count - readed;
-			memcpy(kbuf + readed, dev->data + dev->rp, to_read);
-			readed += to_read;
-			dev->size -= to_read;
-			dev->rp = (dev->rp + to_read) % CAPACITY;
-		}
-		if (readed < count) 
-		{
-			to_read = dev->wp - dev->rp < count - readed ? dev->wp - dev->rp : count - readed;
-			memcpy(kbuf + readed, dev->data + dev->rp, to_read);
-			readed += to_read;
-			dev->size -= to_read;
-			dev->rp = (dev->rp + to_read) % CAPACITY;
-		}
-		spin_unlock(&dev->lock);
-		if (end) {
-			retvalue = -ENODEV;
-			goto read_out;
-		}
-		wake_up_interruptible(&dev->wqueue);
+	
+wait_read:
+	wait_event_interruptible(dev->rqueue, dev->size != 0);
+	spin_lock(&dev->lock);
+	if (dev->size == 0) {
+		spin_unlock(&dev->lock); 
+		goto wait_read;
 	}
+	if (dev->wp <= dev->rp)
+	{
+		to_read = CAPACITY - dev->rp < count - readed ? CAPACITY - dev->rp : count - readed;
+		memcpy(kbuf + readed, dev->data + dev->rp, to_read);
+		readed += to_read;
+		dev->size -= to_read;
+		dev->rp = (dev->rp + to_read) % CAPACITY;
+	}
+	if (readed < count) 
+	{
+		to_read = dev->wp - dev->rp < count - readed ? dev->wp - dev->rp : count - readed;
+		memcpy(kbuf + readed, dev->data + dev->rp, to_read);
+		readed += to_read;
+		dev->size -= to_read;
+		dev->rp = (dev->rp + to_read) % CAPACITY;
+	}
+	spin_unlock(&dev->lock);
+	wake_up_interruptible(&dev->wqueue);
+	
 	if (copy_to_user(buf, kbuf, count))
 		retvalue = -EFAULT;
 	else
@@ -137,42 +125,31 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
 		retvalue = -EFAULT; 
 		goto write_out;
 	}
-	while (writed != count)
-	{
-	wait_write:
-		wait_event_interruptible(dev->wqueue, dev->size != CAPACITY || end);
-		if (end){
-			retvalue = -ENODEV;
-			goto write_out;
-		}
-		spin_lock(&dev->lock);
-		if (dev->size == CAPACITY) {
-			spin_unlock(&dev->lock); 
-			goto wait_write;
-		}
-		if (dev->wp >= dev->rp)
-		{
-			to_write = CAPACITY - dev->wp < count - writed ? CAPACITY - dev->wp : count - writed;
-			memcpy(dev->data + dev->wp, kbuf + writed, to_write);
-			writed += to_write;
-			dev->wp = (dev->wp + to_write) % CAPACITY;
-			dev->size += to_write;
-		}
-		if (writed < count) 
-		{
-			to_write = dev->rp - dev->wp < count - writed ? dev->rp - dev->wp : count - writed;
-			memcpy(dev->data + dev->wp, kbuf + writed, to_write);
-			writed += to_write;
-			dev->wp = (dev->wp + to_write) % CAPACITY;
-			dev->size += to_write;
-		}
-		spin_unlock(&dev->lock);
-		if (end){
-			retvalue = -ENODEV;
-			goto write_out;
-		}
-		wake_up_interruptible(&dev->rqueue);
+wait_write:
+	wait_event_interruptible(dev->wqueue, dev->size != CAPACITY);
+	spin_lock(&dev->lock);
+	if (dev->size == CAPACITY) {
+		spin_unlock(&dev->lock); 
+		goto wait_write;
 	}
+	if (dev->wp >= dev->rp)
+	{
+		to_write = CAPACITY - dev->wp < count - writed ? CAPACITY - dev->wp : count - writed;
+		memcpy(dev->data + dev->wp, kbuf + writed, to_write);
+		writed += to_write;
+		dev->wp = (dev->wp + to_write) % CAPACITY;
+		dev->size += to_write;
+	}
+	if (writed < count) 
+	{
+		to_write = dev->rp - dev->wp < count - writed ? dev->rp - dev->wp : count - writed;
+		memcpy(dev->data + dev->wp, kbuf + writed, to_write);
+		writed += to_write;
+		dev->wp = (dev->wp + to_write) % CAPACITY;
+		dev->size += to_write;
+	}
+	spin_unlock(&dev->lock);
+	wake_up_interruptible(&dev->rqueue);
 	retvalue = writed;
 
 write_out:
@@ -185,6 +162,30 @@ write_out:
  * The "extended" operations -- only seek
  */
 
+long scull_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    struct rbuf *dev = filp->private_data;
+    struct scull_snapshot snapshot;
+
+    if (cmd != SCULL_IOC_PEEK)
+        return -EINVAL;
+
+    spin_lock(&dev->lock);
+
+    snapshot.size = dev->size;
+    snapshot.rp = dev->rp;
+    snapshot.wp = dev->wp;
+	memcpy(snapshot.data, dev->data, CAPACITY);
+	
+    spin_unlock(&dev->lock);
+
+    if (copy_to_user((void __user *)arg,
+                     &snapshot,
+                     sizeof(snapshot)))
+        return -EFAULT;
+
+    return 0;
+}
 
 
 
@@ -194,6 +195,7 @@ struct file_operations scull_fops = {
 	.write =    scull_write,
 	.open =     scull_open,
 	.release =  scull_release,
+	.unlocked_ioctl = scull_ioctl
 };
 
 /*
@@ -207,15 +209,11 @@ struct file_operations scull_fops = {
  */
 void scull_cleanup_module(void)
 {
-	int i;
 	dev_t devno = MKDEV(scull_major, scull_minor);
-	end = 1;
 
 	/* Get rid of our char dev entries */
 	if (scull_devices) {
-		for (i = 0; i < scull_nr_devs; i++) {
-			wake_up_all(&scull_devices[i].rqueue);
-			wake_up_all(&scull_devices[i].wqueue);
+		for (int i = 0; i < scull_nr_devs; i++) {
 			cdev_del(&scull_devices[i].cdev);
 		}
 		kfree(scull_devices);

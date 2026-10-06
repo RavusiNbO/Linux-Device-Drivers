@@ -66,6 +66,12 @@ struct rbuf {
 	struct cdev cdev;	  /* Char device structure		*/
 };
 
+struct scull_snapshot {
+    unsigned long size;
+    unsigned long rp;
+    unsigned long wp;
+    char data[CAPACITY];
+};
 /*
  * Split minors in two parts
  */
