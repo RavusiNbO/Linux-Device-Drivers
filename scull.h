@@ -24,7 +24,7 @@
 #endif
 
 #ifndef SCULL_NR_DEVS
-#define SCULL_NR_DEVS 2    /* scull0 through scull3 */
+#define SCULL_NR_DEVS 4    /* scull0 through scull3 */
 #endif
 
 
@@ -40,17 +40,6 @@
 #ifndef CAPACITY
 #define CAPACITY    1000
 #endif
-
-
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/uaccess.h>
-#include <linux/semaphore.h>
-#include <linux/wait.h>
-#include <linux/spinlock.h>   
-#include <linux/ioctl.h>      
-#include <linux/slab.h>
 
 /*
  * Representation of scull quantum sets.
@@ -72,6 +61,7 @@ struct scull_snapshot {
     unsigned long wp;
     char data[CAPACITY];
 };
+#define SCULL_IOC_PEEK _IOWR('k', 1, char[CAPACITY])
 /*
  * Split minors in two parts
  */

@@ -73,7 +73,8 @@ ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
 	
 	
 wait_read:
-	wait_event_interruptible(dev->rqueue, dev->size != 0);
+	retvalue = wait_event_interruptible(dev->rqueue, dev->size != 0);
+	if (retvalue) goto read_out;
 	spin_lock(&dev->lock);
 	if (dev->size == 0) {
 		spin_unlock(&dev->lock); 
@@ -126,7 +127,8 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
 		goto write_out;
 	}
 wait_write:
-	wait_event_interruptible(dev->wqueue, dev->size != CAPACITY);
+	retvalue = wait_event_interruptible(dev->wqueue, dev->size != CAPACITY);
+	if (retvalue) goto write_out;
 	spin_lock(&dev->lock);
 	if (dev->size == CAPACITY) {
 		spin_unlock(&dev->lock); 
@@ -175,8 +177,34 @@ long scull_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     snapshot.size = dev->size;
     snapshot.rp = dev->rp;
     snapshot.wp = dev->wp;
-	memcpy(snapshot.data, dev->data, CAPACITY);
-	
+
+    if (dev->size > 0) {
+        unsigned long first;
+        unsigned long second;
+
+        if (dev->rp < dev->wp) {
+            memcpy(snapshot.data,
+                   dev->data + dev->rp,
+                   dev->size);
+        } else {
+            first = CAPACITY - dev->rp;
+
+            if (first > dev->size)
+                first = dev->size;
+
+            second = dev->size - first;
+
+            memcpy(snapshot.data,
+                   dev->data + dev->rp,
+                   first);
+
+            if (second > 0)
+                memcpy(snapshot.data + 0,
+                       dev->data,
+                       second);
+        }
+    }
+
     spin_unlock(&dev->lock);
 
     if (copy_to_user((void __user *)arg,

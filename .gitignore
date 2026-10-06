@@ -1,1 +1,12 @@
 .scull*
+*.o
+scull
+client_ioctl
+client_read
+client
+*.mod.*
+*.ko
+*.cmd
+*.mod
+*.order
+*.symvers
